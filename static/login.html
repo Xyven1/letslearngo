@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+	<title>Chat Example</title>
+	<script type="text/javascript">
+		var conn;
+		function setLog(text) {
+			log.innerHTML = text
+		}
+		function sendData(data){
+			console.log(conn)
+			conn.send(JSON.stringify(data))
+		}
+		function onMessage(event){
+			var message = JSON.parse(event.data);
+			console.log(message)
+			switch (message.type) {
+				case "login":
+					setLog("login:" + message.data);
+					break;
+				case "register":
+					setLog("register:" + message.data);
+					break;
+			}
+		}
+		function formSubmit() {
+			if (!conn) {
+				return false;
+			}
+			if (!msg.value) {
+				return false;
+			}
+			sendData({type: "message", data: msg.value});
+			msg.value = "";
+			return false;
+		}
+		async function initWS(){
+			if(conn) return
+			if (window["WebSocket"]) {
+				conn = new WebSocket("ws://" + document.location.host + "/api")
+				conn.onclose = function (evt) {
+					appendLog(createLog("<b>Connection closed.</b>"))
+				}
+				conn.onmessage = onMessage;
+			} else {
+				appendLog(createLog("<b>Your browser does not support WebSockets.</b>"))
+			}
+			console.log("initWS", conn)
+		}
+		function login(){
+			sendData({type:'login', data: JSON.stringify({username:username.value, password:password.value})})
+		}
+    function register(){
+      sendData({type:'register', data:JSON.stringify({username:username.value, password:password.value})})
+    }
+		window.onload = () =>{
+			initWS()
+			var username = document.getElementById("username");
+      var password = document.getElementById("password");
+			var log = document.getElementById("log");
+
+			document.getElementById("form").onsubmit = formSubmit
+		}
+	</script>
+</head>
+
+<body>
+	<form id="form">
+		<input type="text" id="username" placeholder="Username"/>
+    <input type="password" id="password" placeholder="Password"/>
+		<input type="button" value="Login" onclick="login()"/>
+    <input type="button" value="Register" onclick="register()"/>
+	</form>
+  <div id="log"></div>
+</body>
+
+</html>

@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
+	"github.com/mitchellh/mapstructure"
 )
 
 const (
@@ -33,6 +34,7 @@ var upgrader = websocket.Upgrader{
 type Client struct {
 	id   string
 	ip   string
+	user *User
 	hub  *Hub
 	conn *websocket.Conn
 	send chan *Message
@@ -43,9 +45,14 @@ type Message struct {
 	Data string `json:"data"`
 }
 
-type Login struct {
+type Auth struct {
 	Username string `json:"username"`
 	Password string `json:"password"`
+}
+
+type User struct {
+	Username string `mapstructure:"username"`
+	Password string `mapstructure:"password"`
 }
 
 func serveWs(hub *Hub, w http.ResponseWriter, r *http.Request) {
@@ -59,6 +66,65 @@ func serveWs(hub *Hub, w http.ResponseWriter, r *http.Request) {
 
 	go client.writePump()
 	go client.readPump()
+}
+
+// parses a message and sends it to the correct handler
+func (c *Client) handleMessage(message *Message) {
+	//parse messages from client and deal with them
+	var err error
+	switch message.Type {
+	case "message":
+		c.hub.broadcast <- message
+	case "login":
+		var login Auth
+		err = json.Unmarshal([]byte(message.Data), &login)
+		if err != nil {
+			fmt.Print("Failed to parse authentication request:")
+			fmt.Println(err)
+			break
+		}
+		c.send <- c.login(login)
+	case "register":
+		var register Auth
+		err = json.Unmarshal([]byte(message.Data), &register)
+		if err != nil {
+			fmt.Print("Failed to parse authentication request:")
+			fmt.Println(err)
+			break
+		}
+		c.send <- c.register(register)
+	}
+}
+
+//hanldes logining in a user
+func (c *Client) login(login Auth) *Message {
+	//does user exist
+	val := rdb.Exists(ctx, "user:"+login.Username)
+	if val.Val() == 0 {
+		return &Message{Type: "login", Data: "Username does not exist"}
+	}
+	//check password
+	if val := rdb.HGet(ctx, "user:"+login.Username, "password"); val.Val() != login.Password {
+		return &Message{Type: "login", Data: "Password is incorrect"}
+	}
+	//login successful
+	err := mapstructure.Decode(rdb.HGetAll(ctx, "user:"+login.Username).Val(), c.user)
+	if err != nil {
+		fmt.Println(err)
+	}
+	return &Message{Type: "login", Data: "Success"}
+}
+
+//handles registering a new user
+func (c *Client) register(register Auth) *Message {
+	if val := rdb.Exists(ctx, "user:"+register.Username); val.Val() == 1 {
+		return &Message{Type: "register", Data: "Username already exists!"}
+	}
+	var redisUser map[string]interface{}
+	mapstructure.Decode(&User{Username: register.Username, Password: register.Password}, &redisUser)
+	fmt.Println(redisUser)
+	rdb.HSet(ctx, "user:"+register.Username, redisUser)
+	return &Message{Type: "register", Data: "Successfully registered!"}
 }
 
 func (c *Client) readPump() {
@@ -78,22 +144,10 @@ func (c *Client) readPump() {
 			}
 			break
 		}
-		switch message.Type {
-		case "message":
-			c.hub.broadcast <- message
-		case "login":
-			var login Login
-			json.Unmarshal([]byte(message.Data), &login)
-			c.send <- &Message{Type: "login", Data: fmt.Sprintf("Welcome to the chat %s!", login.Username)}
-		}
+		c.handleMessage(message)
 	}
 }
 
-// writePump pumps messages from the hub to the websocket connection.
-//
-// A goroutine running writePump is started for each connection. The
-// application ensures that there is at most one writer to a connection by
-// executing all writes from this goroutine.
 func (c *Client) writePump() {
 	ticker := time.NewTicker(pingPeriod)
 	defer func() {
