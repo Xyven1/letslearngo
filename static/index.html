@@ -3,17 +3,14 @@
 
 <head>
 	<title>Chat Example</title>
+	<script type="text/javascript" src="index.js"></script>
 	<script type="text/javascript">
-		var conn;
 		function appendLog(item) {
 			var doScroll = log.scrollTop > log.scrollHeight - log.clientHeight - 1;
 			log.appendChild(item);
 			if (doScroll) {
 				log.scrollTop = log.scrollHeight - log.clientHeight;
 			}
-		}
-		function sendData(data){
-			conn.send(JSON.stringify(data))
 		}
 		function onMessage(event){
 			var message = JSON.parse(event.data);
@@ -33,31 +30,10 @@
 			return item;
 		}
 		function formSubmit() {
-			if (!conn) {
-				return false;
-			}
-			if (!msg.value) {
-				return false;
-			}
+			if (!conn || !msg.value) return false
 			sendData({type: "message", data: msg.value});
 			msg.value = "";
-			return false;
-		}
-		async function initWS(){
-			if(conn) return
-			if (window["WebSocket"]) {
-				conn = new WebSocket("ws://" + document.location.host + "/api")
-				conn.onclose = function (evt) {
-					appendLog(createLog("<b>Connection closed.</b>"))
-				}
-				conn.onmessage = onMessage;
-			} else {
-				appendLog(createLog("<b>Your browser does not support WebSockets.</b>"))
-			}
-			console.log("initWS")
-		}
-		function login(){
-			sendData({type:'login', data:JSON.stringify({username:'Blake', password:'password'})})
+			return false
 		}
 		window.onload = () =>{
 			initWS()
@@ -110,7 +86,6 @@
 		<input type="submit" value="Send" />
 		<input type="text" id="msg" size="64" autofocus />
 	</form>
-	<button onclick="login()">Login</button>
 </body>
 
 </html>

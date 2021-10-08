@@ -30,6 +30,8 @@ var upgrader = websocket.Upgrader{
 	WriteBufferSize: 1024,
 }
 
+var start time.Time
+
 // Client is a struct which contains data bout a client including the websocket connection and hub
 type Client struct {
 	id   string
@@ -98,19 +100,20 @@ func (c *Client) handleMessage(message *Message) {
 
 //hanldes logining in a user
 func (c *Client) login(login Auth) *Message {
+	//fetch necessary data
+	data := rdb.HGetAll(ctx, "user:"+login.Username).Val()
 	//does user exist
-	val := rdb.Exists(ctx, "user:"+login.Username)
-	if val.Val() == 0 {
+	if len(data) == 0 {
 		return &Message{Type: "login", Data: "Username does not exist"}
 	}
 	//check password
-	if val := rdb.HGet(ctx, "user:"+login.Username, "password"); val.Val() != login.Password {
+	if data["password"] != login.Password {
 		return &Message{Type: "login", Data: "Password is incorrect"}
 	}
 	//login successful
-	err := mapstructure.Decode(rdb.HGetAll(ctx, "user:"+login.Username).Val(), c.user)
+	err := mapstructure.Decode(data, &c.user)
 	if err != nil {
-		fmt.Println(err)
+		panic(err)
 	}
 	return &Message{Type: "login", Data: "Success"}
 }
@@ -127,6 +130,7 @@ func (c *Client) register(register Auth) *Message {
 	return &Message{Type: "register", Data: "Successfully registered!"}
 }
 
+//readPump recieves messages from the websocket connection and handles them
 func (c *Client) readPump() {
 	defer func() {
 		c.hub.unregister <- c
@@ -144,10 +148,12 @@ func (c *Client) readPump() {
 			}
 			break
 		}
+		start = time.Now()
 		c.handleMessage(message)
 	}
 }
 
+//writePump sends messages through the websocket connection
 func (c *Client) writePump() {
 	ticker := time.NewTicker(pingPeriod)
 	defer func() {
@@ -167,6 +173,7 @@ func (c *Client) writePump() {
 			for i := 0; i < len(c.send); i++ {
 				c.conn.WriteJSON(<-c.send)
 			}
+			fmt.Println("Request took:", time.Since(start))
 		case <-ticker.C:
 			c.conn.SetWriteDeadline(time.Now().Add(writeWait))
 			if err := c.conn.WriteMessage(websocket.PingMessage, nil); err != nil {

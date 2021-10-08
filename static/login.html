@@ -3,13 +3,12 @@
 
 <head>
 	<title>Chat Example</title>
+	<script type="text/javascript" src="index.js"></script>
 	<script type="text/javascript">
-		var conn;
 		function setLog(text) {
 			log.innerHTML = text
 		}
 		function sendData(data){
-			console.log(conn)
 			conn.send(JSON.stringify(data))
 		}
 		function onMessage(event){
@@ -34,19 +33,6 @@
 			sendData({type: "message", data: msg.value});
 			msg.value = "";
 			return false;
-		}
-		async function initWS(){
-			if(conn) return
-			if (window["WebSocket"]) {
-				conn = new WebSocket("ws://" + document.location.host + "/api")
-				conn.onclose = function (evt) {
-					appendLog(createLog("<b>Connection closed.</b>"))
-				}
-				conn.onmessage = onMessage;
-			} else {
-				appendLog(createLog("<b>Your browser does not support WebSockets.</b>"))
-			}
-			console.log("initWS", conn)
 		}
 		function login(){
 			sendData({type:'login', data: JSON.stringify({username:username.value, password:password.value})})
