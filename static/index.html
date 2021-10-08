@@ -27,9 +27,9 @@
 					break;
 			}
 		}
-		function createLog(message) {
+		function createLog(html) {
 			var item = document.createElement("div");
-			item.innerText = message;
+			item.innerText = html;
 			return item;
 		}
 		function formSubmit() {
@@ -46,26 +46,25 @@
 		async function initWS(){
 			if(conn) return
 			if (window["WebSocket"]) {
-				conn = new WebSocket("ws://" + document.location.host + "/socket");
+				conn = new WebSocket("ws://" + document.location.host + "/api")
 				conn.onclose = function (evt) {
-					var item = document.createElement("div");
-					item.innerHTML = "<b>Connection closed.</b>";
-					appendLog(item);
-				};
+					appendLog(createLog("<b>Connection closed.</b>"))
+				}
 				conn.onmessage = onMessage;
 			} else {
-				var item = document.createElement("div");
-				item.innerHTML = "<b>Your browser does not support WebSockets.</b>";
-				appendLog(item);
+				appendLog(createLog("<b>Your browser does not support WebSockets.</b>"))
 			}
 			console.log("initWS")
+		}
+		function login(){
+			sendData({type:'login', data:JSON.stringify({username:'Blake', password:'password'})})
 		}
 		window.onload = () =>{
 			initWS()
 			var msg = document.getElementById("msg");
 			var log = document.getElementById("log");
 			document.getElementById("form").onsubmit = formSubmit
-		};
+		}
 	</script>
 	<style type="text/css">
 		html {
@@ -111,7 +110,7 @@
 		<input type="submit" value="Send" />
 		<input type="text" id="msg" size="64" autofocus />
 	</form>
-	<button onclick="sendData({type:'login', data:'username:password'})">Login</button>
+	<button onclick="login()">Login</button>
 </body>
 
 </html>

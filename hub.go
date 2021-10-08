@@ -2,11 +2,11 @@ package main
 
 import (
 	"fmt"
+
+	"github.com/go-redis/redis/v8"
 )
 
 type Hub struct {
-	//name of the hub
-	name string
 	// Registered clients.
 	clients map[*Client]bool
 
@@ -17,9 +17,8 @@ type Hub struct {
 	unregister chan *Client
 }
 
-func newHub(name string) *Hub {
+func newHub() *Hub {
 	return &Hub{
-		name:       name,
 		register:   make(chan *Client),
 		broadcast:  make(chan *Message),
 		unregister: make(chan *Client),
@@ -41,6 +40,7 @@ func (h *Hub) run() {
 			}
 		case message := <-h.broadcast:
 			fmt.Printf("\"%s: %s\" broadcasted\n", message.Type, message.Data)
+			rdb.XAdd(ctx, &redis.XAddArgs{Stream: "chatHistory", Values: map[string]string{"message": message.Data}})
 			for client := range h.clients {
 				select {
 				case client.send <- message:

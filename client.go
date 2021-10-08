@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"time"
@@ -28,6 +29,7 @@ var upgrader = websocket.Upgrader{
 	WriteBufferSize: 1024,
 }
 
+// Client is a struct which contains data bout a client including the websocket connection and hub
 type Client struct {
 	id   string
 	ip   string
@@ -39,6 +41,11 @@ type Client struct {
 type Message struct {
 	Type string `json:"type"`
 	Data string `json:"data"`
+}
+
+type Login struct {
+	Username string `json:"username"`
+	Password string `json:"password"`
 }
 
 func serveWs(hub *Hub, w http.ResponseWriter, r *http.Request) {
@@ -75,7 +82,9 @@ func (c *Client) readPump() {
 		case "message":
 			c.hub.broadcast <- message
 		case "login":
-			c.send <- &Message{Type: "login", Data: "Welcome to the chat!"}
+			var login Login
+			json.Unmarshal([]byte(message.Data), &login)
+			c.send <- &Message{Type: "login", Data: fmt.Sprintf("Welcome to the chat %s!", login.Username)}
 		}
 	}
 }
