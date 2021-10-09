@@ -16,11 +16,18 @@
 			console.log(message)
 			switch (message.type) {
 				case "login":
-					setLog("login:" + message.data);
-					break;
+					setCookie("sessionID", message.data.sessionID, 1/1440)
+					setLog(message.status == "success" ? "Successful login!" : message.data.message)
+					user = message.data
+					delete user.sessionID
+					break
+				case "loginWithID":
+					user = message.data
+					delete user.sessionID
+					break
 				case "register":
-					setLog("register:" + message.data);
-					break;
+					setLog(message.data.message)
+					break
 			}
 		}
 		function formSubmit() {
@@ -35,10 +42,15 @@
 			return false;
 		}
 		function login(){
-			sendData({type:'login', data: JSON.stringify({username:username.value, password:password.value})})
+			var sessionID = getCookie("sessionID")
+			if(sessionID){
+				sendData({type: 'loginWithID', data: {sessionID: sessionID}})
+			}else{
+				sendData({type:'login', data: {username:username.value, password:password.value}})
+			}
 		}
     function register(){
-      sendData({type:'register', data:JSON.stringify({username:username.value, password:password.value})})
+      sendData({type:'register', data:{username:username.value, password:password.value}})
     }
 		window.onload = () =>{
 			initWS()

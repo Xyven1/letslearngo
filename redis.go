@@ -21,7 +21,7 @@ func redisGlobalSub(hub *Hub, key string) {
 		}
 		switch msg.Payload {
 		case "set":
-			hub.broadcast <- &Message{Type: "set", Data: rdb.Get(ctx, "name").Val()}
+			hub.broadcast <- &Message{Type: "set", Data: str2msg(rdb.Get(ctx, "name").Val())}
 		}
 	}
 }
@@ -34,7 +34,7 @@ func redisSub(c *Client, key string) {
 		}
 		switch msg.Payload {
 		case "set":
-			c.send <- &Message{Type: "set", Data: rdb.Get(ctx, "name").Val()}
+			c.send <- &Message{Type: "set", Data: str2msg(rdb.Get(ctx, "name").Val())}
 		}
 	}
 }

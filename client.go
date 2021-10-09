@@ -1,9 +1,9 @@
 package main
 
 import (
-	"encoding/json"
 	"log"
 	"net/http"
+	"regexp"
 	"time"
 
 	"github.com/google/uuid"
@@ -43,13 +43,14 @@ type Client struct {
 }
 
 type Message struct {
-	Type string `json:"type"`
-	Data string `json:"data"`
+	Type   string            `json:"type"`
+	Data   map[string]string `json:"data"`
+	Status string            `json:"status"`
 }
 
 type Auth struct {
-	Username string `json:"username"`
-	Password string `json:"password"`
+	Username string `mapstructure:"username"`
+	Password string `mapstructure:"password"`
 }
 
 type User struct {
@@ -78,54 +79,149 @@ func (c *Client) handleMessage(message *Message) {
 	case "message":
 		c.hub.broadcast <- message
 	case "login":
-		var login Auth
-		err = json.Unmarshal([]byte(message.Data), &login)
+		var data Auth
+		err = mapstructure.Decode(message.Data, &data)
 		if err != nil {
 			log.Println("Failed to parse authentication request:", err)
 			break
 		}
-		c.send <- c.login(login)
+		c.send <- c.login(data)
+	case "loginWithID":
+		var data map[string]string
+		err = mapstructure.Decode(message.Data, &data)
+		if err != nil {
+			log.Println("Failed to parse authentication request:", err)
+			break
+		}
+		c.send <- c.loginWithID(data["sessionID"])
 	case "register":
-		var register Auth
-		err = json.Unmarshal([]byte(message.Data), &register)
+		var data Auth
+		err = mapstructure.Decode(message.Data, &data)
 		if err != nil {
 			log.Println("Failed to parse authentication request:", err)
 			break
 		}
-		c.send <- c.register(register)
+		c.send <- c.register(data)
+	case "set":
+		if err != nil {
+			log.Println("Failed to parse set request:", err)
+			return
+		}
+		c.handleSet(message.Data)
 	}
 }
 
-//hanldes logining in a user
+//handles logging in a user with password
 func (c *Client) login(login Auth) *Message {
 	//fetch necessary data
 	data := rdb.HGetAll(ctx, "user:"+login.Username).Val()
 	//does user exist
 	if len(data) == 0 {
-		return &Message{Type: "login", Data: "Username does not exist"}
+		return &Message{Type: "login", Data: str2msg("Username does not exist"), Status: "error"}
 	}
 	//check password
 	if data["password"] != login.Password {
-		return &Message{Type: "login", Data: "Password is incorrect"}
+		return &Message{Type: "login", Data: str2msg("Password is incorrect"), Status: "error"}
 	}
 	//login successful
 	err := mapstructure.Decode(data, &c.user)
 	if err != nil {
 		panic(err)
 	}
-	return &Message{Type: "login", Data: "Success"}
+	//generate sessionID
+	sessionID := uuid.NewString()
+	rdb.HSet(ctx, "sessionIDs:"+sessionID, "username", c.user.Username)
+	rdb.Expire(ctx, "sessionIDs:"+sessionID, time.Minute)
+	data["sessionID"] = sessionID
+	delete(data, "password")
+	return &Message{Type: "login", Data: data, Status: "success"}
+}
+
+//handles logging in a user with a sessionID
+func (c *Client) loginWithID(sessionID string) *Message {
+	username := checkSessionID(sessionID)
+	if username == "" {
+		return &Message{Type: "loginWithID", Data: str2msg("SessionID is invalid"), Status: "error"}
+	}
+	data := rdb.HGetAll(ctx, "user:"+username).Val()
+	err := mapstructure.Decode(data, &c.user)
+	if err != nil {
+		panic(err)
+	}
+	delete(data, "password")
+	return &Message{Type: "loginWithID", Data: data, Status: "success"}
 }
 
 //handles registering a new user
 func (c *Client) register(register Auth) *Message {
-	if val := rdb.Exists(ctx, "user:"+register.Username); val.Val() == 1 {
-		return &Message{Type: "register", Data: "Username already exists!"}
+	//validate username
+	err := validateUsername(register.Username)
+	if err != "" {
+		return &Message{Type: "register", Data: str2msg(err), Status: "error"}
 	}
-	var redisUser map[string]interface{}
+	//validate password
+	err = validatePassword(register.Password)
+	if err != "" {
+		return &Message{Type: "register", Data: str2msg(err), Status: "error"}
+	}
+	//check if username is taken
+	if val := rdb.Exists(ctx, "user:"+register.Username); val.Val() == 1 {
+		return &Message{Type: "register", Data: str2msg("Username already exists!"), Status: "error"}
+	}
+	var redisUser map[string]string
 	mapstructure.Decode(&User{Username: register.Username, Password: register.Password}, &redisUser)
 	log.Println(redisUser)
 	rdb.HSet(ctx, "user:"+register.Username, redisUser)
-	return &Message{Type: "register", Data: "Successfully registered!"}
+	return &Message{Type: "register", Data: str2msg("Successfully registered!"), Status: "success"}
+}
+
+//validate username
+func validateUsername(username string) string {
+	if len(username) < 3 {
+		return "Username must at least 3 characters"
+	}
+	if len(username) > 20 {
+		return "Maximum 20 characters"
+	}
+	if !regexp.MustCompile(`^[a-zA-Z]\S+$`).MatchString(username) {
+		return "Username must begin with a letter"
+	}
+	if !regexp.MustCompile("^[a-zA-Z0-9._-]*$").MatchString(username) {
+		return "Username can only contain letters, numbers, -, _, and ."
+	}
+	return ""
+}
+
+func validatePassword(password string) string {
+	if len(password) < 8 {
+		return "Password must be at least 8 characters"
+	}
+	return ""
+}
+
+//handle set command
+func (c *Client) handleSet(setMap map[string]string) {
+	for key, value := range setMap {
+		rdb.Set(ctx, "public:"+key, value, 0)
+	}
+}
+
+//create message map
+func str2msg(message string) map[string]string {
+	return map[string]string{"message": message}
+}
+
+//checks if a sessionID is valid
+func checkSessionID(sessionID string) string {
+	val := rdb.HGet(ctx, "sessionIDs:"+sessionID, "username").Val()
+	log.Println(val)
+	return val
+}
+
+//checks if user is admin based on username
+func isAdmin(username string) bool {
+	val := rdb.HGet(ctx, "user:"+username, "admin").Val()
+	return val == "true"
 }
 
 //readPump recieves messages from the websocket connection and handles them
@@ -138,9 +234,10 @@ func (c *Client) readPump() {
 	c.conn.SetReadDeadline(time.Now().Add(pongWait))
 	c.conn.SetPongHandler(func(string) error { c.conn.SetReadDeadline(time.Now().Add(pongWait)); return nil })
 	for {
-		var message *Message
+		var message *Message = &Message{}
 		err := c.conn.ReadJSON(message)
 		if err != nil {
+			log.Println(err)
 			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
 				log.Printf("error: %v", err)
 			}

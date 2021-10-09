@@ -17,10 +17,10 @@
 			switch (message.type) {
 				case "message":
 					console.log("message")
-					appendLog(createLog(message.data));
+					appendLog(createLog(message.data.message));
 					break;
 				case "login":
-					console.log(message.data, "sucessful login")
+					console.log(message.data.message, "sucessful login")
 					break;
 			}
 		}

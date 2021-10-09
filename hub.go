@@ -40,7 +40,7 @@ func (h *Hub) run() {
 			}
 		case message := <-h.broadcast:
 			log.Printf("\"%s: %s\" broadcasted\n", message.Type, message.Data)
-			rdb.XAdd(ctx, &redis.XAddArgs{Stream: "chatHistory", Values: map[string]string{"message": message.Data}})
+			rdb.XAdd(ctx, &redis.XAddArgs{Stream: "chatHistory", Values: message.Data})
 			for client := range h.clients {
 				select {
 				case client.send <- message:
