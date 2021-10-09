@@ -11,20 +11,30 @@ var ctx = context.Background()
 var rdb = redis.NewClient(&redis.Options{
 	Addr: "localhost:6379",
 })
-var subscriber = rdb.Subscribe(ctx, "__keyspace@0__:name").Channel()
 
-func redisSub(hub *Hub) {
+func redisGlobalSub(hub *Hub, key string) {
+	channel := rdb.Subscribe(ctx, fmt.Sprintf("__keyspace@0__:%s", key)).Channel()
 	for {
-		msg := <-subscriber
-		fmt.Println("Test:" + msg.Payload)
-		fmt.Println("Test:" + msg.Channel)
+		msg, ok := <-channel
+		if !ok {
+			return
+		}
 		switch msg.Payload {
 		case "set":
 			hub.broadcast <- &Message{Type: "set", Data: rdb.Get(ctx, "name").Val()}
-		case "del":
-			fmt.Println("del")
-		default:
-			fmt.Println("default")
+		}
+	}
+}
+func redisSub(c *Client, key string) {
+	channel := rdb.Subscribe(ctx, fmt.Sprintf("__keyspace@0__:%s", key)).Channel()
+	for {
+		msg, ok := <-channel
+		if !ok {
+			return
+		}
+		switch msg.Payload {
+		case "set":
+			c.send <- &Message{Type: "set", Data: rdb.Get(ctx, "name").Val()}
 		}
 	}
 }

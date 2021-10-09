@@ -1,7 +1,7 @@
 package main
 
 import (
-	"fmt"
+	"log"
 
 	"github.com/go-redis/redis/v8"
 )
@@ -31,15 +31,15 @@ func (h *Hub) run() {
 		select {
 		case client := <-h.register:
 			h.clients[client] = true
-			fmt.Printf("%s registered\n", client.id)
+			log.Printf("%s registered\n", client.id)
 		case client := <-h.unregister:
-			fmt.Printf("%s unregistered\n", client.id)
+			log.Printf("%s unregistered\n", client.id)
 			if _, ok := h.clients[client]; ok {
 				delete(h.clients, client)
 				close(client.send)
 			}
 		case message := <-h.broadcast:
-			fmt.Printf("\"%s: %s\" broadcasted\n", message.Type, message.Data)
+			log.Printf("\"%s: %s\" broadcasted\n", message.Type, message.Data)
 			rdb.XAdd(ctx, &redis.XAddArgs{Stream: "chatHistory", Values: map[string]string{"message": message.Data}})
 			for client := range h.clients {
 				select {

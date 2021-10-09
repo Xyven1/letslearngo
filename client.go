@@ -2,7 +2,7 @@ package main
 
 import (
 	"encoding/json"
-	"fmt"
+	"log"
 	"net/http"
 	"time"
 
@@ -60,7 +60,7 @@ type User struct {
 func serveWs(hub *Hub, w http.ResponseWriter, r *http.Request) {
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		fmt.Println(err)
+		log.Println(err)
 		return
 	}
 	client := &Client{hub: hub, conn: conn, ip: r.RemoteAddr, id: uuid.NewString(), send: make(chan *Message)}
@@ -81,8 +81,7 @@ func (c *Client) handleMessage(message *Message) {
 		var login Auth
 		err = json.Unmarshal([]byte(message.Data), &login)
 		if err != nil {
-			fmt.Print("Failed to parse authentication request:")
-			fmt.Println(err)
+			log.Println("Failed to parse authentication request:", err)
 			break
 		}
 		c.send <- c.login(login)
@@ -90,8 +89,7 @@ func (c *Client) handleMessage(message *Message) {
 		var register Auth
 		err = json.Unmarshal([]byte(message.Data), &register)
 		if err != nil {
-			fmt.Print("Failed to parse authentication request:")
-			fmt.Println(err)
+			log.Println("Failed to parse authentication request:", err)
 			break
 		}
 		c.send <- c.register(register)
@@ -125,7 +123,7 @@ func (c *Client) register(register Auth) *Message {
 	}
 	var redisUser map[string]interface{}
 	mapstructure.Decode(&User{Username: register.Username, Password: register.Password}, &redisUser)
-	fmt.Println(redisUser)
+	log.Println(redisUser)
 	rdb.HSet(ctx, "user:"+register.Username, redisUser)
 	return &Message{Type: "register", Data: "Successfully registered!"}
 }
@@ -140,11 +138,11 @@ func (c *Client) readPump() {
 	c.conn.SetReadDeadline(time.Now().Add(pongWait))
 	c.conn.SetPongHandler(func(string) error { c.conn.SetReadDeadline(time.Now().Add(pongWait)); return nil })
 	for {
-		var message *Message = &Message{}
+		var message *Message
 		err := c.conn.ReadJSON(message)
 		if err != nil {
 			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
-				fmt.Printf("error: %v", err)
+				log.Printf("error: %v", err)
 			}
 			break
 		}
@@ -173,7 +171,7 @@ func (c *Client) writePump() {
 			for i := 0; i < len(c.send); i++ {
 				c.conn.WriteJSON(<-c.send)
 			}
-			fmt.Println("Request took:", time.Since(start))
+			log.Println("Request took:", time.Since(start))
 		case <-ticker.C:
 			c.conn.SetWriteDeadline(time.Now().Add(writeWait))
 			if err := c.conn.WriteMessage(websocket.PingMessage, nil); err != nil {
