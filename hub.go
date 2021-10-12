@@ -2,8 +2,6 @@ package main
 
 import (
 	"log"
-
-	"github.com/go-redis/redis/v8"
 )
 
 type Hub struct {
@@ -31,16 +29,16 @@ func (h *Hub) run() {
 		select {
 		case client := <-h.register:
 			h.clients[client] = true
-			log.Printf("%s registered\n", client.id)
+			log.Printf("%s registered\n", client.uuid)
 		case client := <-h.unregister:
-			log.Printf("%s unregistered\n", client.id)
+			log.Printf("%s unregistered\n", client.uuid)
 			if _, ok := h.clients[client]; ok {
 				delete(h.clients, client)
 				close(client.send)
 			}
 		case message := <-h.broadcast:
-			log.Printf("\"%s: %s\" broadcasted\n", message.Type, message.Data)
-			rdb.XAdd(ctx, &redis.XAddArgs{Stream: "chatHistory", Values: message.Data})
+			// log.Printf("\"%s: %s\" broadcasted\n", message.Type, message.Data)
+			// rdb.XAdd(ctx, &redis.XAddArgs{Stream: "chatHistory", Values: message.Data})
 			for client := range h.clients {
 				select {
 				case client.send <- message:

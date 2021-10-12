@@ -2,21 +2,23 @@
 <html lang="en">
 
 <head>
-	<title>Chat Example</title>
+	<title>GO</title>
 	<script type="text/javascript" src="index.js"></script>
 	<script type="text/javascript">
 		function setLog(text) {
 			log.innerHTML = text
 		}
-		function sendData(data){
+
+		function sendData(data) {
 			conn.send(JSON.stringify(data))
 		}
-		function onMessage(event){
+
+		function onMessage(event) {
 			var message = JSON.parse(event.data);
 			console.log(message)
 			switch (message.type) {
 				case "login":
-					setCookie("sessionID", message.data.sessionID, 1/1440)
+					setCookie("sessionID", message.data.sessionID, .1 / 1440)
 					setLog(message.status == "success" ? "Successful login!" : message.data.message)
 					user = message.data
 					delete user.sessionID
@@ -30,6 +32,7 @@
 					break
 			}
 		}
+
 		function formSubmit() {
 			if (!conn) {
 				return false;
@@ -37,25 +40,47 @@
 			if (!msg.value) {
 				return false;
 			}
-			sendData({type: "message", data: msg.value});
+			sendData({
+				type: "message",
+				data: msg.value
+			});
 			msg.value = "";
 			return false;
 		}
-		function login(){
+
+		function login() {
 			var sessionID = getCookie("sessionID")
-			if(sessionID){
-				sendData({type: 'loginWithID', data: {sessionID: sessionID}})
-			}else{
-				sendData({type:'login', data: {username:username.value, password:password.value}})
+			if (sessionID) {
+				sendData({
+					type: 'loginWithID',
+					data: {
+						sessionID
+					}
+				})
+			} else {
+				sendData({
+					type: 'login',
+					data: {
+						username: username.value,
+						password: password.value
+					}
+				})
 			}
 		}
-    function register(){
-      sendData({type:'register', data:{username:username.value, password:password.value}})
-    }
-		window.onload = () =>{
+
+		function register() {
+			sendData({
+				type: 'register',
+				data: {
+					username: username.value,
+					password: password.value
+				}
+			})
+		}
+		window.onload = () => {
 			initWS()
 			var username = document.getElementById("username");
-      var password = document.getElementById("password");
+			var password = document.getElementById("password");
 			var log = document.getElementById("log");
 
 			document.getElementById("form").onsubmit = formSubmit
@@ -65,12 +90,12 @@
 
 <body>
 	<form id="form">
-		<input type="text" id="username" placeholder="Username"/>
-    <input type="password" id="password" placeholder="Password"/>
-		<input type="button" value="Login" onclick="login()"/>
-    <input type="button" value="Register" onclick="register()"/>
+		<input type="text" id="username" placeholder="Username" />
+		<input type="password" id="password" placeholder="Password" />
+		<input type="button" value="Login" onclick="login()" />
+		<input type="button" value="Register" onclick="register()" />
 	</form>
-  <div id="log"></div>
+	<div id="log"></div>
 </body>
 
 </html>

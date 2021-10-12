@@ -2,7 +2,7 @@
 <html lang="en">
 
 <head>
-	<title>Chat Example</title>
+	<title>GO</title>
 	<script type="text/javascript" src="index.js"></script>
 	<script type="text/javascript">
 		function appendLog(item) {
@@ -19,8 +19,8 @@
 					console.log("message")
 					appendLog(createLog(message.data.message));
 					break;
-				case "login":
-					console.log(message.data.message, "sucessful login")
+				case "set":
+					console.log(message.data.message)
 					break;
 			}
 		}
@@ -31,7 +31,7 @@
 		}
 		function formSubmit() {
 			if (!conn || !msg.value) return false
-			sendData({type: "message", data: msg.value});
+			sendData({type: "message", data:{message: msg.value}});
 			msg.value = "";
 			return false
 		}

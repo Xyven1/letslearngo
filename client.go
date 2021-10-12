@@ -30,11 +30,9 @@ var upgrader = websocket.Upgrader{
 	WriteBufferSize: 1024,
 }
 
-var start time.Time
-
 // Client is a struct which contains data bout a client including the websocket connection and hub
 type Client struct {
-	id   string
+	uuid string
 	ip   string
 	user *User
 	hub  *Hub
@@ -64,7 +62,7 @@ func serveWs(hub *Hub, w http.ResponseWriter, r *http.Request) {
 		log.Println(err)
 		return
 	}
-	client := &Client{hub: hub, conn: conn, ip: r.RemoteAddr, id: uuid.NewString(), send: make(chan *Message)}
+	client := &Client{hub: hub, conn: conn, ip: r.RemoteAddr, uuid: uuid.NewString(), send: make(chan *Message)}
 	client.hub.register <- client
 
 	go client.writePump()
@@ -117,11 +115,11 @@ func (c *Client) login(login Auth) *Message {
 	data := rdb.HGetAll(ctx, "user:"+login.Username).Val()
 	//does user exist
 	if len(data) == 0 {
-		return &Message{Type: "login", Data: str2msg("Username does not exist"), Status: "error"}
+		return &Message{Type: "login", Data: str2msg("User does not exist"), Status: "error"}
 	}
 	//check password
 	if data["password"] != login.Password {
-		return &Message{Type: "login", Data: str2msg("Password is incorrect"), Status: "error"}
+		return &Message{Type: "login", Data: str2msg("Incorrect password"), Status: "error"}
 	}
 	//login successful
 	err := mapstructure.Decode(data, &c.user)
@@ -130,8 +128,8 @@ func (c *Client) login(login Auth) *Message {
 	}
 	//generate sessionID
 	sessionID := uuid.NewString()
-	rdb.HSet(ctx, "sessionIDs:"+sessionID, "username", c.user.Username)
-	rdb.Expire(ctx, "sessionIDs:"+sessionID, time.Minute)
+	rdb.HSet(ctx, "sessionID:"+sessionID, "username", c.user.Username)
+	rdb.Expire(ctx, "sessionID:"+sessionID, time.Minute/10)
 	data["sessionID"] = sessionID
 	delete(data, "password")
 	return &Message{Type: "login", Data: data, Status: "success"}
@@ -170,7 +168,6 @@ func (c *Client) register(register Auth) *Message {
 	}
 	var redisUser map[string]string
 	mapstructure.Decode(&User{Username: register.Username, Password: register.Password}, &redisUser)
-	log.Println(redisUser)
 	rdb.HSet(ctx, "user:"+register.Username, redisUser)
 	return &Message{Type: "register", Data: str2msg("Successfully registered!"), Status: "success"}
 }
@@ -213,8 +210,7 @@ func str2msg(message string) map[string]string {
 
 //checks if a sessionID is valid
 func checkSessionID(sessionID string) string {
-	val := rdb.HGet(ctx, "sessionIDs:"+sessionID, "username").Val()
-	log.Println(val)
+	val := rdb.HGet(ctx, "sessionID:"+sessionID, "username").Val()
 	return val
 }
 
@@ -243,7 +239,6 @@ func (c *Client) readPump() {
 			}
 			break
 		}
-		start = time.Now()
 		c.handleMessage(message)
 	}
 }
@@ -268,7 +263,6 @@ func (c *Client) writePump() {
 			for i := 0; i < len(c.send); i++ {
 				c.conn.WriteJSON(<-c.send)
 			}
-			log.Println("Request took:", time.Since(start))
 		case <-ticker.C:
 			c.conn.SetWriteDeadline(time.Now().Add(writeWait))
 			if err := c.conn.WriteMessage(websocket.PingMessage, nil); err != nil {

@@ -13,15 +13,16 @@ func main() {
 	log.SetOutput(os.Stdout)
 	hub := newHub()
 	go hub.run()
+	go redisGlobalSub(hub, "test")
 	http.Handle("/", http.FileServer(getFileSystem(useOS)))
 	http.HandleFunc("/api", func(w http.ResponseWriter, r *http.Request) {
 		serveWs(hub, w, r)
 	})
-	http.ListenAndServe("127.0.0.1:8080", nil)
+	http.ListenAndServe("127.0.0.1:8081", nil)
 }
 
 // content holds our static web server content
-//go:embed static
+//go:embed static/*
 var content embed.FS
 
 func getFileSystem(useOS bool) http.FileSystem {
