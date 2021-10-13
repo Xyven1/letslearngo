@@ -1,13 +1,13 @@
 config:
   target: "ws://127.0.0.1:8081/api"
   phases:
-    - duration: 60  # Test for 60 seconds
-      arrivalRate: 10 # Every second, add 10 users
-      rampTo: 100 # And ramp it up to 100 users in total over the 60s period
+    - duration: 30  # Test for 60 seconds
+      arrivalRate: 100 # Every second, add 10 users
+      maxVusers: 10000 # And ramp it up to 100 users in total over the 60s period
       name: "Ramping up the load"
-    - duration: 120 # Then resume the load test for 120s
+    - duration: 60 # Then resume the load test for 120s
       arrivalRate: 100 # With those 100 users we ramped up to in the first phase
-      rampTo: 100 # And keep it steady at 100 users
+      maxVusers: 10000 # And keep it steady at 100 users
       name: "Pushing a constant load"
 scenarios:
   - engine: "ws"
@@ -19,7 +19,7 @@ scenarios:
 						"password": "asdfasdfasd"
 					}
 				}'
-      - think: 5
+      - think: 90
 # All virtual users finished
 # Summary report @ 18:13:00(-0400) 2021-10-11
 #   Scenarios launched:  15262

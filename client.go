@@ -2,33 +2,13 @@ package main
 
 import (
 	"log"
-	"net/http"
 	"regexp"
 	"time"
 
+	"github.com/gofiber/websocket/v2"
 	"github.com/google/uuid"
-	"github.com/gorilla/websocket"
 	"github.com/mitchellh/mapstructure"
 )
-
-const (
-	// Time allowed to write a message to the peer.
-	writeWait = 10 * time.Second
-
-	// Time allowed to read the next pong message from the peer.
-	pongWait = 60 * time.Second
-
-	// Send pings to peer with this period. Must be less than pongWait.
-	pingPeriod = (pongWait * 9) / 10
-
-	// Maximum message size allowed from peer.
-	maxMessageSize = 512
-)
-
-var upgrader = websocket.Upgrader{
-	ReadBufferSize:  1024,
-	WriteBufferSize: 1024,
-}
 
 // Client is a struct which contains data bout a client including the websocket connection and hub
 type Client struct {
@@ -56,18 +36,126 @@ type User struct {
 	Password string `mapstructure:"password"`
 }
 
-func serveWs(hub *Hub, w http.ResponseWriter, r *http.Request) {
-	conn, err := upgrader.Upgrade(w, r, nil)
-	if err != nil {
-		log.Println(err)
-		return
-	}
-	client := &Client{hub: hub, conn: conn, ip: r.RemoteAddr, uuid: uuid.NewString(), send: make(chan *Message)}
-	client.hub.register <- client
+// func serveWs(hub *Hub, w http.ResponseWriter, r *http.Request) {
+// 	conn, err := upgrader.Upgrade(w, r, nil)
+// 	if err != nil {
+// 		log.Println(err)
+// 		return
+// 	}
+// 	client := &Client{hub: hub, conn: conn, ip: r.RemoteAddr, uuid: uuid.NewString(), send: make(chan *Message)}
+// 	client.hub.register <- client
 
-	go client.writePump()
-	go client.readPump()
+// 	go client.writePump()
+// 	go client.readPump()
+// }
+
+func serveWs(hub *Hub, c *websocket.Conn) {
+	client := &Client{hub: hub, conn: c, ip: c.RemoteAddr().String(), uuid: uuid.NewString(), send: make(chan *Message)}
+	client.hub.register <- client
+	// var (
+	// 	mt  int
+	// 	msg []byte
+	// 	err error
+	// )
+	client.conn.ReadMessage()
+	go client.read()
+	// for {
+	// 	if mt, msg, err = c.ReadMessage(); err != nil {
+	// 		log.Println("read:", err)
+	// 		break
+	// 	}
+	// 	log.Printf("recv: %s", msg)
+
+	// 	if err = c.WriteMessage(mt, msg); err != nil {
+	// 		log.Println("write:", err)
+	// 		break
+	// 	}
+	// }
 }
+
+func (c *Client) read() {
+	defer func() {
+		c.hub.unregister <- c
+		c.conn.Close()
+	}()
+	for {
+		_, msg, err := c.conn.ReadMessage()
+		if err != nil {
+			log.Println(err)
+			return
+		}
+		log.Println("here", msg)
+		// var message *Message = &Message{}
+		// err := c.ReadJSON(message)
+		// if err != nil {
+		// 	log.Println(err)
+		// 	return
+		// }
+		//client.handleMessage(message)
+	}
+}
+func (c *Client) write() {
+	for {
+		message, ok := <-c.send
+		if !ok {
+			c.conn.Close()
+			return
+		}
+		c.conn.WriteJSON(message)
+	}
+}
+
+// //readPump recieves messages from the websocket connection and handles them
+// func (c *Client) readPump() {
+// 	defer func() {
+// 		c.hub.unregister <- c
+// 		c.conn.Close()
+// 	}()
+// 	c.conn.SetReadLimit(maxMessageSize)
+// 	c.conn.SetReadDeadline(time.Now().Add(pongWait))
+// 	c.conn.SetPongHandler(func(string) error { c.conn.SetReadDeadline(time.Now().Add(pongWait)); return nil })
+// 	for {
+// 		var message *Message = &Message{}
+// 		err := c.conn.ReadJSON(message)
+// 		if err != nil {
+// 			log.Println(err)
+// 			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
+// 				log.Printf("error: %v", err)
+// 			}
+// 			break
+// 		}
+// 		c.handleMessage(message)
+// 	}
+// }
+
+// //writePump sends messages through the websocket connection
+// func (c *Client) writePump() {
+// 	ticker := time.NewTicker(pingPeriod)
+// 	defer func() {
+// 		ticker.Stop()
+// 		c.conn.Close()
+// 	}()
+// 	for {
+// 		select {
+// 		case message, ok := <-c.send:
+// 			c.conn.SetWriteDeadline(time.Now().Add(writeWait))
+// 			if !ok {
+// 				// The hub closed the channel.
+// 				c.conn.WriteMessage(websocket.CloseMessage, []byte{})
+// 				return
+// 			}
+// 			c.conn.WriteJSON(message)
+// 			for i := 0; i < len(c.send); i++ {
+// 				c.conn.WriteJSON(<-c.send)
+// 			}
+// 		case <-ticker.C:
+// 			c.conn.SetWriteDeadline(time.Now().Add(writeWait))
+// 			if err := c.conn.WriteMessage(websocket.PingMessage, nil); err != nil {
+// 				return
+// 			}
+// 		}
+// 	}
+// }
 
 // parses a message and sends it to the correct handler
 func (c *Client) handleMessage(message *Message) {
@@ -218,56 +306,4 @@ func checkSessionID(sessionID string) string {
 func isAdmin(username string) bool {
 	val := rdb.HGet(ctx, "user:"+username, "admin").Val()
 	return val == "true"
-}
-
-//readPump recieves messages from the websocket connection and handles them
-func (c *Client) readPump() {
-	defer func() {
-		c.hub.unregister <- c
-		c.conn.Close()
-	}()
-	c.conn.SetReadLimit(maxMessageSize)
-	c.conn.SetReadDeadline(time.Now().Add(pongWait))
-	c.conn.SetPongHandler(func(string) error { c.conn.SetReadDeadline(time.Now().Add(pongWait)); return nil })
-	for {
-		var message *Message = &Message{}
-		err := c.conn.ReadJSON(message)
-		if err != nil {
-			log.Println(err)
-			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
-				log.Printf("error: %v", err)
-			}
-			break
-		}
-		c.handleMessage(message)
-	}
-}
-
-//writePump sends messages through the websocket connection
-func (c *Client) writePump() {
-	ticker := time.NewTicker(pingPeriod)
-	defer func() {
-		ticker.Stop()
-		c.conn.Close()
-	}()
-	for {
-		select {
-		case message, ok := <-c.send:
-			c.conn.SetWriteDeadline(time.Now().Add(writeWait))
-			if !ok {
-				// The hub closed the channel.
-				c.conn.WriteMessage(websocket.CloseMessage, []byte{})
-				return
-			}
-			c.conn.WriteJSON(message)
-			for i := 0; i < len(c.send); i++ {
-				c.conn.WriteJSON(<-c.send)
-			}
-		case <-ticker.C:
-			c.conn.SetWriteDeadline(time.Now().Add(writeWait))
-			if err := c.conn.WriteMessage(websocket.PingMessage, nil); err != nil {
-				return
-			}
-		}
-	}
 }
