@@ -2,18 +2,11 @@ package main
 
 import (
 	"embed"
+	"io/fs"
 	"log"
 	"net/http"
 	"os"
-
-	"github.com/gofiber/fiber/v2"
-	"github.com/gofiber/fiber/v2/middleware/filesystem"
-	"github.com/gofiber/websocket/v2"
 )
-
-// content holds our static web server content
-//go:embed static
-var content embed.FS
 
 func main() {
 	useOS := len(os.Args) > 1 && os.Args[1] == "live"
@@ -21,23 +14,26 @@ func main() {
 	hub := newHub()
 	go hub.run()
 	go redisGlobalSub(hub, "test")
+	http.Handle("/", http.FileServer(getFileSystem(useOS)))
+	http.HandleFunc("/api", func(w http.ResponseWriter, r *http.Request) {
+		serveWs(hub, w, r)
+	})
+	http.ListenAndServe("127.0.0.1:8081", nil)
+}
 
-	app := fiber.New()
+// content holds our static web server content
+//go:embed static/*
+var content embed.FS
+
+func getFileSystem(useOS bool) http.FileSystem {
 	if useOS {
-		app.Static("/", "./static")
-	} else {
-		app.Use("/", filesystem.New(filesystem.Config{
-			Root:       http.FS(content),
-			PathPrefix: "static",
-			Browse:     true,
-		}))
+		log.Print("using live mode")
+		return http.FS(os.DirFS("static"))
 	}
-	app.Use("/api", websocket.New(func(c *websocket.Conn) {
-		serveWs(hub, c)
-	}))
-	// http.HandleFunc("/api", func(w http.ResponseWriter, r *http.Request) {
-	// 	serveWs(hub, w, r)
-	// })
-
-	app.Listen("127.0.0.1:8081")
+	log.Print("using embed mode")
+	fsys, err := fs.Sub(content, "static")
+	if err != nil {
+		panic(err)
+	}
+	return http.FS(fsys)
 }
